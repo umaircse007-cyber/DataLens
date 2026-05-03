@@ -68,7 +68,7 @@ DataLens/
 **1. Clone and create a virtual environment**
 
 ```powershell
-git clone https://github.com/your-username/DataLens.git
+git clone https://github.com/azim-iqbal/DataLens.git
 cd DataLens
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
