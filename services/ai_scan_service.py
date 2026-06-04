@@ -92,39 +92,26 @@ def _describe_column_gemini_sync(payload: dict) -> dict | None:
 
 
 def _describe_column_groq_sync(payload: dict) -> dict | None:
-    api_key = (os.environ.get("GROQ_API_KEY") or "").strip()
-    if not api_key:
+    from services.groq_client import groq_chat, is_groq_configured
+    from services.groq_keys import ensure_env_loaded
+
+    ensure_env_loaded()
+    if not is_groq_configured():
         return None
 
-    try:
-        from groq import Groq
-
-        client = Groq(api_key=api_key)
-        prompt = _column_prompt(payload)
-        model_names = [
-            (os.environ.get("GROQ_MODEL") or "").strip(),
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-versatile",
-            "llama3-8b-8192",
-        ]
-        for model_name in [name for name in model_names if name]:
-            try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.2,
-                )
-                parsed = _parse_json_dict(response.choices[0].message.content or "")
-                if parsed:
-                    return parsed
-            except Exception:
-                continue
-    except Exception:
+    prompt = _column_prompt(payload)
+    text, _error = groq_chat(
+        [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        max_tokens=800,
+    )
+    if not text:
         return None
-    return None
+    parsed = _parse_json_dict(text)
+    return parsed if parsed else None
 
 
 async def describe_column_gemini(payload: dict) -> dict | None:

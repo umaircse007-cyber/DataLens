@@ -4,6 +4,7 @@ import os
 from fastapi import APIRouter, Body, HTTPException
 
 from services.counterfactual_service import run_counterfactual_test
+from services.dataset_service import UPLOAD_DIR
 
 
 router = APIRouter()
@@ -21,7 +22,7 @@ async def counterfactual_test(
 
     result = run_counterfactual_test(filepath, sensitive_column, outcome_column)
 
-    with open(f"data/uploads/{file_id}_cf.json", "w", encoding="utf-8") as f:
+    with open(os.path.join(UPLOAD_DIR, f"{file_id}_cf.json"), "w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 
     return result

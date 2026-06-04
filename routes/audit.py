@@ -3,7 +3,7 @@ import os
 
 from fastapi import APIRouter, Body, HTTPException
 
-from services.dataset_service import filter_core_audit_columns, load_dataset
+from services.dataset_service import UPLOAD_DIR, filter_core_audit_columns, load_dataset
 from services.metrics_service import calculate_fairness_metrics
 
 
@@ -25,7 +25,7 @@ async def run_audit(
     if df.empty:
         raise HTTPException(status_code=400, detail="Dataset is empty")
 
-    findings_path = f"data/uploads/{file_id}_findings.json"
+    findings_path = os.path.join(UPLOAD_DIR, f"{file_id}_findings.json")
     findings = []
     if os.path.exists(findings_path):
         with open(findings_path, "r", encoding="utf-8") as f:
@@ -45,7 +45,7 @@ async def run_audit(
         favorable_value,
     )
 
-    with open(f"data/uploads/{file_id}_metrics.json", "w", encoding="utf-8") as f:
+    with open(os.path.join(UPLOAD_DIR, f"{file_id}_metrics.json"), "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
     return {

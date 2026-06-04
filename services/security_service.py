@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import time
@@ -7,12 +8,57 @@ from typing import Any
 import pandas as pd
 from cryptography.fernet import Fernet
 
+logger = logging.getLogger("datalens.security")
+
+PLACEHOLDER_MARKERS = (
+    "generate_with",
+    "your_",
+    "changeme",
+    "replace_me",
+    "paste_",
+)
+
+
+def _looks_like_placeholder(key: str) -> bool:
+    lower = key.lower().strip()
+    if not lower:
+        return True
+    return any(marker in lower for marker in PLACEHOLDER_MARKERS)
+
+
+def _is_valid_fernet_key(key: str) -> bool:
+    if _looks_like_placeholder(key):
+        return False
+    try:
+        Fernet(key.encode("utf-8"))
+        return True
+    except Exception:
+        return False
+
+
+def ensure_file_encryption_key() -> str:
+    """
+    Return a valid Fernet key. Generates one in-memory when .env has a missing or placeholder value.
+    """
+    from services.groq_keys import ensure_env_loaded
+
+    ensure_env_loaded()
+    key = (os.environ.get("FILE_ENCRYPTION_KEY") or "").strip()
+    if _is_valid_fernet_key(key):
+        return key
+
+    key = Fernet.generate_key().decode()
+    os.environ["FILE_ENCRYPTION_KEY"] = key
+    logger.warning(
+        "FILE_ENCRYPTION_KEY was missing or invalid (use a Fernet key from: "
+        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"). "
+        "Using a temporary in-memory key for this server session."
+    )
+    return key
+
 
 def _fernet() -> Fernet:
-    key = (os.environ.get("FILE_ENCRYPTION_KEY") or "").strip()
-    if not key:
-        raise ValueError("FILE_ENCRYPTION_KEY is not configured")
-    return Fernet(key.encode("utf-8"))
+    return Fernet(ensure_file_encryption_key().encode("utf-8"))
 
 
 def save_encrypted(file_bytes: bytes, upload_dir: str) -> tuple[str, str]:

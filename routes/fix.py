@@ -3,7 +3,7 @@ import os
 
 from fastapi import APIRouter, Body, HTTPException
 
-from services.dataset_service import load_dataset
+from services.dataset_service import UPLOAD_DIR, load_dataset
 from services.fix_service import apply_multi_column_fix
 from services.metrics_service import calculate_fairness_metrics
 
@@ -30,13 +30,13 @@ async def apply_fix(
         raise HTTPException(status_code=400, detail="Invalid outcome column")
 
     fixed_df = apply_multi_column_fix(df, sensitive_columns, outcome_column, favorable_value)
-    fixed_filepath = f"data/uploads/{file_id}_fixed.csv"
+    fixed_filepath = os.path.join(UPLOAD_DIR, f"{file_id}_fixed.csv")
     fixed_df.to_csv(fixed_filepath, index=False)
 
     original_metrics = calculate_fairness_metrics(filepath, sensitive_columns, outcome_column, favorable_value)
     fixed_metrics = calculate_fairness_metrics(fixed_filepath, sensitive_columns, outcome_column, favorable_value)
 
-    with open(f"data/uploads/{file_id}_fixed_metrics.json", "w", encoding="utf-8") as f:
+    with open(os.path.join(UPLOAD_DIR, f"{file_id}_fixed_metrics.json"), "w", encoding="utf-8") as f:
         json.dump(fixed_metrics, f, indent=2)
 
     return {

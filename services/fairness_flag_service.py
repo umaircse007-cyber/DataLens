@@ -115,8 +115,13 @@ Return ONLY valid JSON:
 
 
 def _groq_verify_findings(payloads: list[dict], proposed_findings: list[dict]) -> dict[str, dict]:
-    api_key = (os.environ.get("GROQ_API_KEY") or "").strip()
-    if not api_key or not proposed_findings:
+    from services.groq_client import groq_chat, is_groq_configured
+    from services.groq_keys import ensure_env_loaded
+
+    ensure_env_loaded()
+    if not proposed_findings:
+        return {}
+    if not is_groq_configured():
         return {}
 
     safe_findings = [
@@ -156,41 +161,29 @@ Return ONLY valid JSON:
 ]
 """
 
-    try:
-        from groq import Groq
-
-        client = Groq(api_key=api_key)
-        model_names = [
-            (os.environ.get("GROQ_MODEL") or "").strip(),
-            "llama-3.1-8b-instant",
-            "llama-3.3-70b-versatile",
-            "llama3-8b-8192",
-        ]
-        for model_name in [name for name in model_names if name]:
-            try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[
-                        {"role": "system", "content": "You are an independent fairness verification reviewer."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.1,
-                )
-                items = _parse_findings(response.choices[0].message.content or "")
-                if items:
-                    return {
-                        str(item.get("column")): {
-                            "verdict": str(item.get("verdict", "Uncertain")),
-                            "reason": str(item.get("reason", "Groq reviewed the proposed fairness flag.")),
-                            "confidence": str(item.get("confidence", "Medium")),
-                        }
-                        for item in items
-                        if item.get("column")
-                    }
-            except Exception:
-                continue
-    except Exception:
-        return {}
+    text, error = groq_chat(
+        [
+            {"role": "system", "content": "You are an independent fairness verification reviewer. Return JSON only."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.1,
+        max_tokens=2000,
+    )
+    if text:
+        items = _parse_findings(text)
+        if items:
+            return {
+                str(item.get("column")): {
+                    "verdict": str(item.get("verdict", "Uncertain")),
+                    "reason": str(item.get("reason", "Groq reviewed the proposed fairness flag.")),
+                    "confidence": str(item.get("confidence", "Medium")),
+                }
+                for item in items
+                if item.get("column")
+            }
+    if error:
+        import logging
+        logging.getLogger("datalens.fairness").warning("Groq fairness verification failed: %s", error)
     return {}
 
 
@@ -228,6 +221,9 @@ def _heuristic_assess_columns(profiles: list[dict]) -> list[dict]:
 
 
 def flag_sensitive_columns(profiles: list[dict], df: pd.DataFrame) -> list[dict]:
+    from services.groq_keys import ensure_env_loaded
+
+    ensure_env_loaded()
     payloads = [
         build_safe_payload(df, profile["column_name"])
         for profile in profiles
@@ -263,11 +259,22 @@ def flag_sensitive_columns(profiles: list[dict], df: pd.DataFrame) -> list[dict]
             continue
 
         reason = str(finding.get("reason", "Potential fairness-relevant column."))
-        groq_verification = groq_verifications.get(str(column)) or {
-            "verdict": "Not configured",
-            "reason": "Groq verification was not available; DataLens used Gemini and deterministic governance heuristics.",
-            "confidence": "Low",
-        }
+        from services.groq_client import is_groq_configured
+
+        if str(column) in groq_verifications:
+            groq_verification = groq_verifications[str(column)]
+        elif is_groq_configured():
+            groq_verification = {
+                "verdict": "Pending",
+                "reason": "Groq is configured but did not return a verification for this column in this run.",
+                "confidence": "Low",
+            }
+        else:
+            groq_verification = {
+                "verdict": "Not configured",
+                "reason": "Set GROQ_API_KEY in your .env file (copy from .env.example) and re-analyse the dataset.",
+                "confidence": "Low",
+            }
         gate_passes = True
         if outcome_identified:
             stats = correlation_gate(df, column, outcome_column, favorable_value)

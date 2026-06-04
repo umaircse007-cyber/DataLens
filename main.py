@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -7,12 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from cryptography.fernet import Fernet
-
 from services.dataset_service import ensure_data_dirs
+from services.groq_keys import ensure_env_loaded
+from services.security_service import ensure_file_encryption_key
 
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIR = BASE_DIR / "frontend"
+DATA_DIR = BASE_DIR / "data"
+
+ensure_env_loaded()
+ensure_file_encryption_key()
 ensure_data_dirs()
 logger = logging.getLogger("datalens")
 
@@ -46,43 +52,42 @@ app.include_router(export_router)
 
 
 @app.on_event("startup")
-async def ensure_file_encryption_key() -> None:
-    if not os.environ.get("FILE_ENCRYPTION_KEY"):
-        os.environ["FILE_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
-        logger.warning(
-            "FILE_ENCRYPTION_KEY was not set; generated an in-memory development key. "
-            "Set FILE_ENCRYPTION_KEY explicitly in production."
-        )
+async def validate_file_encryption_key() -> None:
+    ensure_file_encryption_key()
 
-if os.path.exists("frontend"):
-    app.mount("/static", StaticFiles(directory="frontend"), name="frontend")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="frontend")
 
 
 @app.get("/")
 def upload_page():
-    return FileResponse("frontend/upload.html")
+    return FileResponse(FRONTEND_DIR / "upload.html")
 
 
 @app.get("/upload.html")
 def upload_html():
-    return FileResponse("frontend/upload.html")
+    return FileResponse(FRONTEND_DIR / "upload.html")
 
 
 @app.get("/results")
 @app.get("/results.html")
 def results_page():
-    return FileResponse("frontend/results.html")
+    return FileResponse(FRONTEND_DIR / "results.html")
 
 
 @app.get("/view-history")
 @app.get("/history.html")
 def history_page():
-    return FileResponse("frontend/history.html")
+    return FileResponse(FRONTEND_DIR / "history.html")
+
+
+@app.get("/style.css")
+def legacy_stylesheet():
+    return FileResponse(FRONTEND_DIR / "style.css", media_type="text/css")
 
 
 @app.get("/download/fixed/{file_id}")
 def download_fixed(file_id: str):
-    path = os.path.join("data", "uploads", f"{file_id}_fixed.csv")
+    path = DATA_DIR / "uploads" / f"{file_id}_fixed.csv"
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Fixed dataset not found")
     return FileResponse(path, media_type="text/csv", filename=f"datalens_fixed_{file_id}.csv")
@@ -90,7 +95,7 @@ def download_fixed(file_id: str):
 
 @app.get("/download/report/{file_id}")
 def download_report(file_id: str):
-    path = os.path.join("data", "reports", f"{file_id}_report.pdf")
+    path = DATA_DIR / "reports" / f"{file_id}_report.pdf"
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Report not found")
     return FileResponse(path, media_type="application/pdf", filename=f"datalens_report_{file_id}.pdf")

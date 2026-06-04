@@ -2,9 +2,9 @@
 
 An intelligent data dictionary agent that helps you actually understand what's in your dataset before you do anything with it.
 
-Upload a CSV or Excel file and DataLens profiles every column, generates plain-English descriptions using Gemini and Groq, detects sensitive attributes and proxy columns, flags fairness risks with EU AI Act mappings, scores your dataset's ML readiness, and exports the whole thing as a PDF, Excel, or JSON report.
+Upload a CSV or Excel file and DataLens profiles every column, generates plain-English descriptions using Gemini and Groq, detects sensitive attributes and proxy columns, flags fairness risks with EU AI Act mappings, scores your dataset's AI & Analytics Readiness, and exports the whole thing as a PDF, Excel, or JSON report.
 
-Built with FastAPI and Python. Currently under active development — working locally, deployment coming soon.
+Built with FastAPI and Python as a final hackathon project, with local-first execution and deployment-ready structure.
 
 ---
 
@@ -19,13 +19,15 @@ DataLens fixes that. Upload the file, get a full dictionary back in under 60 sec
 ## What it does
 
 - **Column profiling** — data types, null rates, unique counts, top values, sample values for every column
+- **Dataset health audit** — duplicate records, fuzzy duplicate names, invalid emails/phones/dates, impossible ages, numeric outliers, country normalization, and country-currency mismatches
+- **Ask AI** — ask Gemini and Groq-backed questions such as "What are the 5 biggest problems?" against the audit result
 - **AI-generated descriptions** — Gemini and Groq independently describe each column in plain English; findings are confidence-scored based on whether both models agree
 - **Sensitive and proxy column detection** — flags gender, age, zip code, college tier, and similar columns that could cause bias or compliance issues if used in a model
 - **Anomaly storytelling** — doesn't just flag outliers and nulls, explains what they likely mean in a business context
 - **Relationship detection** — catches strongly correlated columns, redundant pairs (like `age` and `dob`), and derived columns (like `annual_salary = monthly_salary × 12`)
 - **Fairness metrics** — demographic parity, disparate impact ratio with the 80% rule, statistical significance checks, counterfactual flip test
 - **EU AI Act mapping** — maps detected issues to Article 10 and Article 13 where applicable
-- **ML readiness score** — scores the dataset out of 100 across null rates, class imbalance, sensitive column presence, duplicate rows, and dataset size
+- **AI & Analytics Readiness** — explains readiness across data quality, governance, documentation, fairness, and analytics suitability
 - **Query suggestions** — suggests 5 analytical questions you could actually answer with this data, with pandas and SQL one-liners for each
 - **Export** — PDF audit report, Excel dictionary, and JSON for integration with other tools
 - **Audit history** — every run is saved locally so you can track how a dataset changes over time
@@ -101,7 +103,7 @@ Generate your encryption key (run once, paste the output into `.env`):
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-The app runs without API keys using local fallback logic — useful for testing and demos when you don't want to burn API quota.
+The app runs without API keys using local fallback logic — useful for local validation when you don't want to burn API quota.
 
 ---
 
@@ -150,4 +152,4 @@ data/reports/       generated PDF and Excel exports
 
 ## Contributing
 
-Open an issue before starting a PR so we can discuss the approach. This is a hackathon project so things move fast and the codebase changes frequently.
+Open an issue before starting a PR so we can discuss the approach. This is a final hackathon build, so changes should stay focused and production-minded.

@@ -1,22 +1,17 @@
-import asyncio
 import os
 import sqlite3
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO
+from typing import List
 
 import pandas as pd
-from fastapi import APIRouter, Cookie, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Body, Cookie, File, HTTPException, Response, UploadFile
 
-from services.ai_scan_service import scan_all_columns
-from services.anomaly_service import add_anomaly_notes
-from services.data_service import profile_dataset
-from services.dataset_service import UPLOAD_DIR, ensure_data_dirs
-from services.dictionary_cache import get_result, store_result
-from services.fairness_flag_service import flag_sensitive_columns
-from services.query_service import suggest_queries
-from services.readiness_service import ml_readiness_score
-from services.relationship_service import detect_redundant_columns, detect_relationships
+from services.ai_assistant_service import ai_provider_status, answer_audit_question
+from services.analysis_service import run_full_analysis, run_multi_table_analysis
+from services.dataset_service import DATA_DIR, UPLOAD_DIR, ensure_data_dirs
+from services.dictionary_cache import get_result, store_result, update_result
 from services.security_service import decrypt_to_memory, save_encrypted
 from routes.export import export_result
 
@@ -38,10 +33,10 @@ def _load_dataframe(file_bytes: bytes, filename: str) -> pd.DataFrame:
 
 
 def _history_db_path() -> str:
-    database_url = os.environ.get("DATABASE_URL", "sqlite:///./data/datalens.db")
-    if database_url.startswith("sqlite:///"):
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url and database_url.startswith("sqlite:///"):
         return database_url.replace("sqlite:///", "", 1)
-    return os.path.join("data", "datalens.db")
+    return str(DATA_DIR / "datalens.db")
 
 
 def _ensure_history_schema(connection: sqlite3.Connection) -> None:
@@ -134,42 +129,73 @@ async def analyse_dictionary(
     if df.empty:
         raise HTTPException(status_code=400, detail="Dataset is empty")
 
-    profiles = profile_dataset(df)
-    profiles = await scan_all_columns(df, profiles)
-    profiles = add_anomaly_notes(profiles, df)
-    relationships = detect_relationships(df)
-    redundant_columns = detect_redundant_columns(df)
-    query_suggestions, profiles = await asyncio.gather(
-        asyncio.to_thread(suggest_queries, profiles),
-        asyncio.to_thread(flag_sensitive_columns, profiles, df),
-    )
-    readiness = ml_readiness_score(df, profiles)
-
-    flagged_column_count = sum(1 for profile in profiles if profile.get("fairness_flag"))
-    result = {
-        "metadata": {
-            "session_id": encrypted_session_id,
-            "filename": filename,
-            "timestamp": datetime.utcnow().isoformat(),
-            "row_count": int(len(df)),
-            "column_count": int(len(df.columns)),
-            "flagged_column_count": int(flagged_column_count),
-        },
-        "profiles": profiles,
-        "relationships": relationships,
-        "redundant_columns": redundant_columns,
-        "query_suggestions": query_suggestions,
-        "readiness": readiness,
-        "exports": {
-            "pdf": f"/dictionary/export/{encrypted_session_id}/pdf",
-            "excel": f"/dictionary/export/{encrypted_session_id}/excel",
-            "json": f"/dictionary/export/{encrypted_session_id}/json",
-        },
-    }
+    result = await run_full_analysis(df, filename, encrypted_session_id)
 
     store_result(encrypted_session_id, result)
     _save_dictionary_history(result, owner_session_id)
     return result
+
+
+@router.post("/analyse-multi")
+async def analyse_dictionary_multi(
+    response: Response,
+    files: List[UploadFile] = File(...),
+    datalens_history_session: str | None = Cookie(default=None, alias=HISTORY_COOKIE_NAME),
+):
+    ensure_data_dirs()
+    if not files:
+        raise HTTPException(status_code=400, detail="At least one file is required")
+
+    owner_session_id = _history_owner_id(datalens_history_session, response)
+    tables: list[tuple[str, pd.DataFrame]] = []
+    encrypted_session_id = None
+    encrypted_path = None
+
+    for index, upload in enumerate(files):
+        filename = upload.filename or ""
+        if not filename.lower().endswith((".csv", ".xlsx", ".xls")):
+            raise HTTPException(status_code=400, detail="Only CSV or Excel files are allowed")
+        raw_bytes = await upload.read()
+        if index == 0:
+            encrypted_session_id, encrypted_path = save_encrypted(raw_bytes, UPLOAD_DIR)
+            file_bytes = raw_bytes
+        else:
+            file_bytes = raw_bytes
+        frame = _load_dataframe(file_bytes, filename)
+        if frame.empty:
+            raise HTTPException(status_code=400, detail=f"Dataset {filename} is empty")
+        tables.append((filename, frame))
+
+    primary_filename = tables[0][0]
+    result = await run_multi_table_analysis(tables, encrypted_session_id, primary_filename)
+    store_result(encrypted_session_id, result)
+    _save_dictionary_history(result, owner_session_id)
+    return result
+
+
+@router.get("/ai-status")
+async def dictionary_ai_status():
+    return ai_provider_status()
+
+
+@router.post("/ask")
+async def ask_dictionary_ai(payload: dict):
+    question = str(payload.get("question") or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required")
+
+    session_id = str(payload.get("session_id") or "").strip()
+    result = get_result(session_id) if session_id else None
+    if not result and isinstance(payload.get("result"), dict):
+        result = payload["result"]
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=404, detail="No audit result found for this question")
+
+    if not result.get("chat_index"):
+        from services.chat_index_service import build_chat_index
+        result["chat_index"] = build_chat_index(result)
+
+    return answer_audit_question(question, result)
 
 
 @router.get("/export/{session_id}/{format}")
@@ -177,6 +203,12 @@ async def export_dictionary_result(session_id: str, format: str):
     result = get_result(session_id)
     if not result:
         raise HTTPException(status_code=404, detail="Session result not found")
+    return export_result(session_id, format, result)
+
+
+@router.post("/export/{session_id}/{format}")
+async def export_edited_dictionary_result(session_id: str, format: str, result: dict = Body(...)):
+    update_result(session_id, result)
     return export_result(session_id, format, result)
 
 

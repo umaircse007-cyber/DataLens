@@ -1,12 +1,15 @@
 import os
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from scipy.stats import pointbiserialr
 
 
-UPLOAD_DIR = "data/uploads"
-REPORT_DIR = "data/reports"
+BASE_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BASE_DIR / "data"
+UPLOAD_DIR = str(DATA_DIR / "uploads")
+REPORT_DIR = str(DATA_DIR / "reports")
 
 PROTECTED_HINTS = {
     "gender",

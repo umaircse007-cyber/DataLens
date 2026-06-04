@@ -12,6 +12,7 @@ from services.dataset_service import (
     infer_outcome_column,
     load_dataset,
     sanitize_findings,
+    UPLOAD_DIR,
 )
 from services.gemini_service import get_gemini_findings
 from services.groq_service import validate_findings_with_claude
@@ -33,7 +34,7 @@ async def upload_dataset(file: UploadFile = File(...)):
 
     file_id = str(uuid.uuid4())
     safe_name = os.path.basename(filename).replace(" ", "_")
-    filepath = f"data/uploads/{file_id}_{safe_name}"
+    filepath = os.path.join(UPLOAD_DIR, f"{file_id}_{safe_name}")
 
     with open(filepath, "wb") as f:
         f.write(await file.read())
@@ -67,10 +68,10 @@ async def upload_dataset(file: UploadFile = File(...)):
         "suggested_sensitive_columns": suggested_sensitive_columns,
     }
 
-    with open(f"data/uploads/{file_id}_findings.json", "w", encoding="utf-8") as f:
+    with open(os.path.join(UPLOAD_DIR, f"{file_id}_findings.json"), "w", encoding="utf-8") as f:
         json.dump(final_findings, f, indent=2)
 
-    with open(f"data/uploads/{file_id}_meta.json", "w", encoding="utf-8") as f:
+    with open(os.path.join(UPLOAD_DIR, f"{file_id}_meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
     return {
