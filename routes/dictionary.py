@@ -7,6 +7,7 @@ from typing import List
 
 import pandas as pd
 from fastapi import APIRouter, Body, Cookie, File, HTTPException, Response, UploadFile
+from pydantic import BaseModel
 
 from services.ai_assistant_service import ai_provider_status, answer_audit_question
 from services.analysis_service import run_full_analysis, run_multi_table_analysis
@@ -14,6 +15,12 @@ from services.dataset_service import DATA_DIR, UPLOAD_DIR, ensure_data_dirs
 from services.dictionary_cache import get_result, store_result, update_result
 from services.security_service import decrypt_to_memory, save_encrypted
 from routes.export import export_result
+
+
+class AskPayload(BaseModel):
+    question: str
+    session_id: str | None = None
+    result: dict | None = None
 
 
 router = APIRouter(prefix="/dictionary", tags=["Dictionary"])
@@ -179,15 +186,15 @@ async def dictionary_ai_status():
 
 
 @router.post("/ask")
-async def ask_dictionary_ai(payload: dict):
-    question = str(payload.get("question") or "").strip()
+async def ask_dictionary_ai(payload: AskPayload):
+    question = str(payload.question or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Question is required")
 
-    session_id = str(payload.get("session_id") or "").strip()
+    session_id = str(payload.session_id or "").strip()
     result = get_result(session_id) if session_id else None
-    if not result and isinstance(payload.get("result"), dict):
-        result = payload["result"]
+    if not result and isinstance(payload.result, dict):
+        result = payload.result
     if not isinstance(result, dict):
         raise HTTPException(status_code=404, detail="No audit result found for this question")
 
