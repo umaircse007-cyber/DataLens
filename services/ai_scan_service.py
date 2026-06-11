@@ -136,6 +136,11 @@ def consensus_description(gemini_result: dict | None, groq_result: dict | None) 
         groq_words = _words(str(groq_result.get("description", "")))
         overlap = len(gemini_words & groq_words) / max(len(gemini_words), 1)
         confidence = "Confirmed" if overlap > 0.4 else "Review needed"
+        
+        disagreement_reason = None
+        if confidence == "Review needed":
+            disagreement_reason = f"Gemini: {gemini_result.get('description')} | Groq: {groq_result.get('description')}"
+        
         return {
             "display_name": gemini_result.get("display_name"),
             "description": gemini_result.get("description"),
@@ -144,6 +149,7 @@ def consensus_description(gemini_result: dict | None, groq_result: dict | None) 
             "data_quality_note": gemini_result.get("data_quality_note", ""),
             "confidence": confidence,
             "groq_description": groq_result.get("description"),
+            "disagreement_reason": disagreement_reason,
         }
 
     result = gemini_result or groq_result
@@ -156,6 +162,7 @@ def consensus_description(gemini_result: dict | None, groq_result: dict | None) 
             "data_quality_note": result.get("data_quality_note", ""),
             "confidence": "Single model",
             "groq_description": groq_result.get("description") if groq_result else None,
+            "disagreement_reason": None,
         }
 
     return {
@@ -166,6 +173,7 @@ def consensus_description(gemini_result: dict | None, groq_result: dict | None) 
         "data_quality_note": "",
         "confidence": "Fallback",
         "groq_description": None,
+        "disagreement_reason": None,
     }
 
 

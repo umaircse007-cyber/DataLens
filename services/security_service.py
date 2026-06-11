@@ -38,7 +38,8 @@ def _is_valid_fernet_key(key: str) -> bool:
 
 def ensure_file_encryption_key() -> str:
     """
-    Return a valid Fernet key. Generates one in-memory when .env has a missing or placeholder value.
+    Return a valid Fernet key. If .env lacks a valid key, generate one and persist it to .env when possible.
+    Falls back to an in-memory key if writing fails.
     """
     from services.groq_keys import ensure_env_loaded
 
@@ -47,13 +48,46 @@ def ensure_file_encryption_key() -> str:
     if _is_valid_fernet_key(key):
         return key
 
+    # Generate a new Fernet key and persist it to .env if possible
     key = Fernet.generate_key().decode()
     os.environ["FILE_ENCRYPTION_KEY"] = key
-    logger.warning(
-        "FILE_ENCRYPTION_KEY was missing or invalid (use a Fernet key from: "
-        "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"). "
-        "Using a temporary in-memory key for this server session."
-    )
+
+    try:
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        env_path = os.path.join(base_dir, ".env")
+
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                text = f.read()
+            if "FILE_ENCRYPTION_KEY=" in text:
+                lines = text.splitlines()
+                replaced = False
+                for i, line in enumerate(lines):
+                    if line.strip().startswith("FILE_ENCRYPTION_KEY="):
+                        lines[i] = f"FILE_ENCRYPTION_KEY={key}"
+                        replaced = True
+                        break
+                if not replaced:
+                    lines.append(f"FILE_ENCRYPTION_KEY={key}")
+                text = "\n".join(lines) + "\n"
+            else:
+                if not text.endswith("\n") and text:
+                    text += "\n"
+                text += f"FILE_ENCRYPTION_KEY={key}\n"
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            logger.warning("FILE_ENCRYPTION_KEY was missing or invalid. Generated and saved to .env.")
+        else:
+            # Create a new .env file with the key
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write(f"FILE_ENCRYPTION_KEY={key}\n")
+            logger.warning("FILE_ENCRYPTION_KEY generated and written to new .env file.")
+    except Exception as exc:
+        logger.warning(
+            "FILE_ENCRYPTION_KEY was missing or invalid. Using a temporary in-memory key for this server session. Failed to persist to .env: %s",
+            exc,
+        )
+
     return key
 
 

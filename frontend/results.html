@@ -1332,6 +1332,7 @@
             ${flag ? `<div class="notice danger">${escapeHtml(flag.eu_ai_act_article || "Governance review")}: ${escapeHtml(flag.reason || "")}</div>` : ""}
             ${groq ? `<div class="notice warn">Verification: ${escapeHtml(groq.verdict || "Uncertain")} - ${escapeHtml(groq.reason || "")}</div>` : ""}
             ${profile.groq_description ? `<div class="notice info">Second opinion: ${escapeHtml(profile.groq_description)}</div>` : ""}
+            ${profile.disagreement_reason ? `<div class="notice warn">Disagreement: ${escapeHtml(profile.disagreement_reason)}</div>` : ""}
             <div class="notice info">Model path: Gemini dictionary draft${profile.groq_description || groq ? " + Groq second-pass review." : " with Groq verification shown when returned by the backend."}</div>
           </article>
         `;
@@ -1377,6 +1378,12 @@
       const risks = governanceRisks();
       const trust = (health.overall_trust || {}).score ?? health.score ?? "N/A";
       const flaggedCount = flaggedProfiles().length;
+
+      // Aggregate model disagreements from profiles (backend populates disagreement_reason when models diverge)
+      const disagreementProfiles = (state.profiles || []).filter(p => p.disagreement_reason);
+      const disagreementCount = disagreementProfiles.length;
+      const disagreementBody = disagreementProfiles.length ? disagreementProfiles.map(p => `${p.display_name || p.column_name || p.column}: ${previewText(p.disagreement_reason, 240)}`).join("\n\n") : "No model disagreements detected.";
+
       document.getElementById("governancePanel").innerHTML = `
         <section class="panel">
           <h2>Governance Summary</h2>
@@ -1384,6 +1391,7 @@
           <div class="provider-row">
             ${explainableBadge(`Trust ${trust}`, "Trust score", `This score summarizes reliability and governance readiness for this dataset. It is influenced by quality findings, fairness flags, readiness deductions, and governance signals returned by the backend.`, "neutral")}
             ${explainableBadge(`${flaggedCount} flagged columns`, "Flagged columns", `${flaggedCount} column(s) were marked because they may contain personal, protected, proxy, or governance-sensitive information.`, flaggedCount ? "high" : "low")}
+            ${explainableBadge(`${disagreementCount} disagreements`, "Model disagreements", disagreementBody, disagreementCount ? "high" : "low")}
           </div>
         </section>
         <div class="insight-grid">

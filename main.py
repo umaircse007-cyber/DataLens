@@ -8,9 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from services.dataset_service import ensure_data_dirs
-from services.groq_keys import ensure_env_loaded
-from services.security_service import ensure_file_encryption_key
+# Import helpers from package or top-level module depending on how the app is started
+try:
+    from .services.dataset_service import ensure_data_dirs
+    from .services.groq_keys import ensure_env_loaded
+    from .services.security_service import ensure_file_encryption_key
+except Exception:
+    from services.dataset_service import ensure_data_dirs
+    from services.groq_keys import ensure_env_loaded
+    from services.security_service import ensure_file_encryption_key
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,9 +41,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routes import audit, counterfactual, eu_mapper, fix, history, report, upload
-from routes.dictionary import router as dictionary_router
-from routes.export import router as export_router
+try:
+    from .routes import audit, counterfactual, eu_mapper, fix, history, report, upload
+    from .routes.dictionary import router as dictionary_router
+    from .routes.export import router as export_router
+except Exception:
+    from routes import audit, counterfactual, eu_mapper, fix, history, report, upload
+    from routes.dictionary import router as dictionary_router
+    from routes.export import router as export_router
 
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 app.include_router(audit.router, prefix="/audit", tags=["Audit"])
